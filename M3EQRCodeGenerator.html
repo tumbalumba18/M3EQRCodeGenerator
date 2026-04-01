@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M3E QR code generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #6750A4; --bg: #F6F2F7; }
+        body { font-family: 'Google Sans', sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
+        .card { background: #fff; padding: 30px; border-radius: 32px; max-width: 950px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.05); }
+        .ui { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        .full { grid-column: span 3; }
+        label { font-size: 10px; font-weight: 800; color: var(--primary); text-transform: uppercase; display: block; margin-bottom: 4px; }
+        input[type="text"], input[type="file"], select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 12px; box-sizing: border-box; font-size: 13px; }
+        .group { background: #fdfbff; padding: 15px; border-radius: 20px; border: 1px solid #eee; display: flex; flex-direction: column; gap: 10px; }
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        #canvas-wrap { background: #eee; border-radius: 24px; padding: 20px; display: flex; justify-content: center; margin: 20px 0; min-height: 400px; align-items: center; }
+        canvas { max-width: 100%; height: auto; border-radius: 16px; background: white; box-shadow: 0 8px 30px rgba(0,0,0,0.1); }
+        button { padding: 20px; border-radius: 100px; border: none; font-weight: 700; cursor: pointer; font-size: 15px; transition: 0.2s; }
+        .btn-gen { background: var(--primary); color: white; }
+        .btn-dl { background: #fff; border: 2px solid var(--primary); color: var(--primary); }
+        input[type="range"] { width: 100%; accent-color: var(--primary); }
+        .color-strip { height: 35px; border: none; padding: 0; background: none; cursor: pointer; width: 100%; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2 style="margin:0 0 5px">Orbital Shape Master</h2>
+    <p style="font-size:12px; color:#666; margin-bottom:20px">Independent Shape & Color Engine</p>
+    
+    <div class="ui">
+        <div class="full group">
+            <label>Link / Content</label>
+            <input type="text" id="text-input" value="https://google.com">
+        </div>
+        
+        <div class="group">
+            <label>Dot Shape 1</label>
+            <input type="file" id="dot1-png" accept="image/png">
+            <input type="color" id="c-dot1" value="#46416D" class="color-strip">
+        </div>
+
+        <div class="group">
+            <label>Dot Shape 2</label>
+            <input type="file" id="dot2-png" accept="image/png">
+            <input type="color" id="c-dot2" value="#6750A4" class="color-strip">
+        </div>
+
+        <div class="group">
+            <label>Dot Shape 3</label>
+            <input type="file" id="dot3-png" accept="image/png">
+            <input type="color" id="c-dot3" value="#9A82DB" class="color-strip">
+        </div>
+
+        <div class="group">
+            <label>Eye PNG & Corner Color</label>
+            <input type="file" id="eye-png" accept="image/png">
+            <input type="color" id="c-corner-master" value="#1C1B1F" class="color-strip">
+        </div>
+
+        <div class="group">
+            <label>Orbit Style & Thickness</label>
+            <select id="orbit-style">
+                <option value="solid">Solid Ring</option>
+                <option value="dots">Touching Circles</option>
+            </select>
+            <input type="range" id="ring-thick" min="20" max="100" value="70">
+        </div>
+
+        <div class="group">
+            <label>QR Scale & BG Blob</label>
+            <input type="range" id="qr-scale" min="50" max="200" value="100">
+            <div style="display:flex; gap:5px; align-items:center;">
+                <input type="color" id="color-bg" value="#EADDFF" style="width:40px; height:30px; border:none; background:none;">
+                <input type="file" id="blob-shape" accept="image/png" style="flex-grow:1">
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-wrap"><canvas id="mainCanvas"></canvas></div>
+    
+    <div class="btn-row">
+        <button class="btn-gen" onclick="generateQR(false)">Update Preview</button>
+        <button class="btn-dl" onclick="generateQR(true)">Download PNG</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d');
+
+    async function loadImg(file) {
+        if (!file) return null;
+        return new Promise(r => {
+            const rd = new FileReader();
+            rd.onload = (e) => { const i = new Image(); i.onload = () => r(i); i.src = e.target.result; };
+            rd.readAsDataURL(file);
+        });
+    }
+
+    function createStamp(img, color, size) {
+        const c = document.createElement('canvas');
+        c.width = size; c.height = size;
+        const x = c.getContext('2d');
+        if (!img) {
+            x.fillStyle = color;
+            x.beginPath(); x.arc(size/2, size/2, size/2.2, 0, Math.PI*2); x.fill();
+        } else {
+            x.drawImage(img, 0, 0, size, size);
+            x.globalCompositeOperation = 'source-in';
+            x.fillStyle = color; x.fillRect(0, 0, size, size);
+        }
+        return c;
+    }
+
+    async function generateQR(isDl) {
+        const text = document.getElementById('text-input').value;
+        const cornerColor = document.getElementById('c-corner-master').value;
+        const style = document.getElementById('orbit-style').value;
+        const thick = parseInt(document.getElementById('ring-thick').value) / 100;
+        const scale = parseInt(document.getElementById('qr-scale').value) / 100;
+
+        const qr = qrcode(0, 'H');
+        qr.addData(text);
+        qr.make();
+
+        const count = qr.getModuleCount();
+        const baseCell = 60;
+        const sCell = baseCell * scale;
+        const cSize = count * baseCell + (baseCell * 15);
+        canvas.width = cSize; canvas.height = cSize;
+
+        // 1. Background
+        const bImg = await loadImg(document.getElementById('blob-shape').files[0]);
+        if (bImg) ctx.drawImage(createStamp(bImg, document.getElementById('color-bg').value, cSize), 0,0);
+        else { ctx.fillStyle = document.getElementById('color-bg').value; ctx.fillRect(0,0,cSize,cSize); }
+
+        const offset = (cSize - (count * sCell)) / 2;
+
+        // 2. Load and Tint 3 Unique Shapes
+        const d1Img = await loadImg(document.getElementById('dot1-png').files[0]);
+        const d2Img = await loadImg(document.getElementById('dot2-png').files[0]);
+        const d3Img = await loadImg(document.getElementById('dot3-png').files[0]);
+        
+        const stamps = [
+            createStamp(d1Img, document.getElementById('c-dot1').value, sCell),
+            createStamp(d2Img, document.getElementById('c-dot2').value, sCell),
+            createStamp(d3Img, document.getElementById('c-dot3').value, sCell)
+        ];
+
+        const eyeImg = await loadImg(document.getElementById('eye-png').files[0]);
+        const eyeSize = sCell * 3.5;
+        const eyeStamp = createStamp(eyeImg, cornerColor, eyeSize);
+
+        // 3. Draw
+        for (let r = 0; r < count; r++) {
+            for (let c = 0; c < count; c++) {
+                const x = c * sCell + offset;
+                const y = r * sCell + offset;
+                const isEye = (r < 7 && c < 7) || (r < 7 && c >= count-7) || (r >= count-7 && c < 7);
+
+                if (isEye) {
+                    const lR = (c >= count-7) ? r : (r >= count-7 ? r-(count-7) : r);
+                    const lC = (c >= count-7) ? c-(count-7) : (r >= count-7 ? c : c);
+                    if (lR === 0 && lC === 0) {
+                        const cx = x + (sCell * 3.5);
+                        const cy = y + (sCell * 3.5);
+                        
+                        ctx.save();
+                        ctx.strokeStyle = cornerColor;
+                        ctx.lineWidth = sCell * thick;
+                        ctx.lineCap = "round";
+                        if (style === 'dots') ctx.setLineDash([0.1, sCell * 1.05]); 
+                        else ctx.setLineDash([]);
+
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, sCell * 3.0, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                        
+                        ctx.drawImage(eyeStamp, cx - eyeSize/2, cy - eyeSize/2);
+                    }
+                } else if (qr.isDark(r, c)) {
+                    // Randomly pick one of the 3 custom stamps
+                    const st = stamps[Math.floor(Math.random()*3)];
+                    // Draw slightly smaller than cell for better definition
+                    const pad = sCell * 0.1;
+                    ctx.drawImage(st, x + pad, y + pad, sCell * 0.8, sCell * 0.8);
+                }
+            }
+        }
+
+        if (isDl) {
+            const link = document.createElement('a');
+            link.download = 'custom-shape-qr.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+    }
+</script>
+</body>
+</html>
