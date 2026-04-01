@@ -8,3 +8,6 @@ This program allows you to choose three png files for the qr code's inner dot sh
 The colors of every component can also be changed.
 
 A preview can be generated after you make your changes, and then the final QR code can be downloaded as a .png file.
+
+Example output in material 3 design:
+<img width="2640" height="2640" alt="image" src="https://github.com/user-attachments/assets/fc311b0a-b997-4475-b13e-4600e94ef448" />
